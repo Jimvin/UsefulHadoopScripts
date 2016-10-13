@@ -56,35 +56,41 @@ def main():
     exit(1)
 
   # The script takes one argument, a YARN jobId for a Hive job
-  jobId=sys.argv[1]
-  url = 'http://%s:%s/ws/v1/history/mapreduce/jobs/%s/counters' % (hostname, port, jobId)
-  response = getHttpResponse(url)
-
-  # We should either have a non-secure or a SPNEGO response object at this point
-  if (response.status_code != 200):
-    # A 404 response indicates the jobId was not found on the server
-    if (response.status_code == 404):
-      sys.stderr.write("Error: jobId %s not found on job history server" % (jobId))
-    else:
-      sys.stderr.write("HTTP %d: Unable to get counters" % (response.status_code))
-    exit(1)
-
-  jData = json.loads(response.content)
-  hiveCounters = getHiveCounters(jData)
-  if (hiveCounters == None):
-    sys.stderr.write("No Hive counters in job output, was %s really a Hive job?" % jobId)
-    exit(2)
-
-  metrics = {}
-  for counter in hiveCounters:
-    metrics[counter['name']] = counter['totalCounterValue']
-# We can extract single values by key if required
-#    if counter['name'].startswith("RECORDS_IN"):
-#      recordsIn = str(counter['totalCounterValue'])
-#    if counter['name'].startswith("RECORDS_OUT"):
-#      recordsOut = str(counter['totalCounterValue'])
+  jobIds=sys.argv[1]
   
-  result = "metrics=" + str(metrics) + "\n"
+  
+  allMetrics = {}
+  allMetrics['hiveJobCounters'] = []
+  for jobId in jobIds.split(","):
+    url = 'http://%s:%s/ws/v1/history/mapreduce/jobs/%s/counters' % (hostname, port, jobId)
+    response = getHttpResponse(url)
+
+    # We should either have a non-secure or a SPNEGO response object at this point
+    if (response.status_code != 200):
+      # A 404 response indicates the jobId was not found on the server
+      if (response.status_code == 404):
+        sys.stderr.write("Error: jobId %s not found on job history server" % (jobId))
+      else:
+        sys.stderr.write("HTTP %d: Unable to get counters" % (response.status_code))
+      exit(1)
+
+    jData = json.loads(response.content)
+    hiveCounters = getHiveCounters(jData)
+    if (hiveCounters == None):
+      sys.stderr.write("No Hive counters in job output, was %s really a Hive job?" % jobId)
+      exit(2)
+
+    metrics = {}
+    counters = {}
+    metrics['jobId'] = jobId
+    for counter in hiveCounters:
+      counters[counter['name']] = counter['totalCounterValue']
+    
+    metrics['jobId'] = jobId
+    metrics['counters'] = counters
+    allMetrics['hiveJobCounters'].append(metrics)
+
+  result = "metrics=" + str(allMetrics) + "\n"
 
   # We can log the result to a file
   f = open('/tmp/output.txt', 'a') 
